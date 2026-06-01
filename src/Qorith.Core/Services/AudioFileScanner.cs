@@ -1,48 +1,50 @@
 namespace Qorith.Core.Services;
 
+using System.Collections.Concurrent;
 using System.IO;
 using Qorith.Models;
 
 /// <summary>
-/// Enhanced audio file scanner with Windows compatibility and error handling.
+/// Enhanced audio file scanner with modern .NET standards and error handling.
 /// Supports all Windows OS versions without crashes.
 /// </summary>
 public class AudioFileScanner
 {
-    private static readonly string[] SupportedFormats = { ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma" };
-    private static readonly object _lockObject = new();
+    private static readonly IReadOnlySet<string> SupportedFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma"
+    };
     
     /// <summary>
     /// Scans a folder and returns all audio files found with error handling.
     /// </summary>
     public async Task<List<Song>> ScanFolderAsync(string folderPath)
     {
-        var songs = new List<Song>();
-        
-        if (string.IsNullOrWhiteSpace(folderPath))
-            return songs;
-        
-        if (!Directory.Exists(folderPath))
-            return songs;
+        if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
+        {
+            return [];
+        }
         
         return await Task.Run(() =>
         {
+            var songs = new ConcurrentBag<Song>();
+            
             try
             {
                 var files = GetAudioFilesRecursive(folderPath);
                 
-                foreach (var file in files)
+                Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, file =>
                 {
                     try
-                    {
+                {
                         // Skip system files and shortcuts
                         var attributes = File.GetAttributes(file);
                         if ((attributes & FileAttributes.System) == FileAttributes.System)
-                            continue;
+                            return;
                         
                         var fileInfo = new FileInfo(file);
                         if (fileInfo.Length == 0)
-                            continue;
+                            return;
                         
                         var song = new Song
                         {
@@ -53,52 +55,43 @@ public class AudioFileScanner
                             Duration = TimeSpan.Zero
                         };
                         
-                        lock (_lockObject)
-                        {
-                            songs.Add(song);
-                        }
+                        songs.Add(song);
                     }
                     catch (UnauthorizedAccessException)
                     {
                         // Skip protected files
-                        continue;
                     }
                     catch (IOException)
                     {
                         // Skip locked files
-                        continue;
                     }
                     catch (Exception)
                     {
                         // Skip any other file read errors
-                        continue;
                     }
-                }
+                });
             }
             catch (UnauthorizedAccessException)
             {
                 // Folder access denied - return what we have
-                return songs;
             }
             catch (PathTooLongException)
             {
                 // Handle paths longer than 260 characters (Windows legacy limit)
-                return songs;
             }
             catch (Exception)
             {
                 // Return whatever we've scanned so far
-                return songs;
             }
             
-            return songs;
+            return [..songs.OrderBy(s => s.Title)];
         });
     }
     
     /// <summary>
     /// Recursively gets audio files from folder, handling Windows path limitations.
     /// </summary>
-    private List<string> GetAudioFilesRecursive(string folderPath)
+    private static List<string> GetAudioFilesRecursive(string folderPath)
     {
         var files = new List<string>();
         var queue = new Queue<string>();
@@ -118,7 +111,7 @@ public class AudioFileScanner
                     {
                         try
                         {
-                            if (SupportedFormats.Contains(Path.GetExtension(file).ToLower()))
+                            if (SupportedFormats.Contains(Path.GetExtension(file)))
                             {
                                 files.Add(file);
                             }
@@ -160,17 +153,18 @@ public class AudioFileScanner
     /// </summary>
     public List<Song> GetFilesFromFolder(string folderPath)
     {
-        var songs = new List<Song>();
-        
         if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
-            return songs;
+        {
+            return [];
+        }
         
         try
         {
             var files = Directory.GetFiles(folderPath)
-                .Where(f => SupportedFormats.Contains(Path.GetExtension(f).ToLower()))
+                .Where(f => SupportedFormats.Contains(Path.GetExtension(f)))
                 .ToList();
             
+            var songs = new List<Song>();
             foreach (var file in files)
             {
                 try
@@ -190,25 +184,28 @@ public class AudioFileScanner
                     // Skip problematic files
                 }
             }
+            
+            return songs;
         }
         catch (UnauthorizedAccessException)
         {
             // Folder access denied
+            return [];
         }
         catch (PathTooLongException)
         {
             // Path too long
+            return [];
         }
         catch (Exception)
         {
             // Other errors
+            return [];
         }
-        
-        return songs;
     }
     
     /// <summary>
     /// Gets supported audio file formats.
     /// </summary>
-    public string[] GetSupportedFormats() => SupportedFormats;
+    public IReadOnlySet<string> GetSupportedFormats() => SupportedFormats;
 }

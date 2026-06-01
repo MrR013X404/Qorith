@@ -5,48 +5,52 @@ using Qorith.Core.Interfaces;
 using Qorith.Models;
 
 /// <summary>
-/// Robust media player implementation with comprehensive error handling.
+/// Modern media player implementation with comprehensive error handling.
 /// Supports all Windows versions without crashes.
 /// </summary>
-public class MediaPlayer : IMediaPlayer, IDisposable
+public class MediaPlayer : IMediaPlayer, IAsyncDisposable
 {
     private IWavePlayer? _wavePlayer;
     private AudioFileReader? _audioFileReader;
-    private List<Song> _playlist = new();
+    private List<Song> _playlist = [];
     private int _currentIndex = -1;
     private RepeatMode _repeatMode = RepeatMode.None;
-    private bool _shuffleMode = false;
-    private Random _random = new();
+    private bool _shuffleMode;
+    private readonly Random _random = new();
     private PlaybackState _playbackState = PlaybackState.Stopped;
     private float _volume = 1.0f;
     private System.Timers.Timer? _positionTimer;
-    private bool _isDisposed = false;
-    private readonly object _lockObject = new();
+    private bool _isDisposed;
+    private readonly ReaderWriterLockSlim _lock = new();
     
     public event EventHandler<PlaybackStateChangedEventArgs>? PlaybackStateChanged;
     public event EventHandler<SongChangedEventArgs>? SongChanged;
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
     
-    public Song? CurrentSong => _currentIndex >= 0 && _currentIndex < _playlist.Count ? _playlist[_currentIndex] : null;
-    
-    public TimeSpan CurrentPosition
+    public Song? CurrentSong
     {
         get
         {
+            _lock.EnterReadLock();
             try
             {
-                return _audioFileReader?.CurrentTime ?? TimeSpan.Zero;
+                return _currentIndex >= 0 && _currentIndex < _playlist.Count ? _playlist[_currentIndex] : null;
             }
-            catch
+            finally
             {
-                return TimeSpan.Zero;
+                _lock.ExitReadLock();
             }
         }
+    }
+    
+    public TimeSpan CurrentPosition
+    {
+        get => _audioFileReader?.CurrentTime ?? TimeSpan.Zero;
         set
         {
             try
             {
-                if (_audioFileReader != null)
+                if (_audioFileReader is not null)
                     _audioFileReader.CurrentTime = value;
             }
             catch { /* Ignore seek errors */ }
@@ -73,13 +77,10 @@ public class MediaPlayer : IMediaPlayer, IDisposable
         get => _playbackState;
         private set
         {
-            lock (_lockObject)
+            if (_playbackState != value)
             {
-                if (_playbackState != value)
-                {
-                    _playbackState = value;
-                    PlaybackStateChanged?.Invoke(this, new PlaybackStateChangedEventArgs { NewState = value });
-                }
+                _playbackState = value;
+                PlaybackStateChanged?.Invoke(this, new PlaybackStateChangedEventArgs { NewState = value });
             }
         }
     }
@@ -92,7 +93,7 @@ public class MediaPlayer : IMediaPlayer, IDisposable
             try
             {
                 _volume = Math.Clamp(value, 0f, 1f);
-                if (_wavePlayer != null)
+                if (_wavePlayer is not null)
                     _wavePlayer.Volume = _volume;
             }
             catch { /* Ignore volume errors */ }
@@ -108,7 +109,7 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     {
         try
         {
-            _wavePlayer = new WaveOutEvent();
+            _wavePlayer = new WaveOutEvent { DesiredLatency = 100 };
             _wavePlayer.Volume = _volume;
         }
         catch (Exception ex)
@@ -129,18 +130,23 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     
     public async Task PlayAsync(Song song)
     {
-        if (song == null || string.IsNullOrWhiteSpace(song.FilePath))
+        if (song?.FilePath is null || !File.Exists(song.FilePath))
             return;
         
         try
         {
-            if (!File.Exists(song.FilePath))
-                return;
-            
             await StopAsync();
             
-            _playlist = new List<Song> { song };
-            _currentIndex = 0;
+            _lock.EnterWriteLock();
+            try
+            {
+                _playlist = [song];
+                _currentIndex = 0;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
             
             await PlayCurrentAsync();
         }
@@ -155,13 +161,21 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     {
         try
         {
-            if (!songs?.Any() ?? true || startIndex < 0 || startIndex >= songs.Count)
+            if (songs is null || songs.Count == 0 || startIndex < 0 || startIndex >= songs.Count)
                 return;
             
             await StopAsync();
             
-            _playlist = new List<Song>(songs);
-            _currentIndex = startIndex;
+            _lock.EnterWriteLock();
+            try
+            {
+                _playlist = new List<Song>(songs);
+                _currentIndex = startIndex;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
             
             await PlayCurrentAsync();
         }
@@ -174,13 +188,14 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     
     private async Task PlayCurrentAsync()
     {
-        if (CurrentSong == null)
+        var currentSong = CurrentSong;
+        if (currentSong is null)
             return;
         
         try
         {
             _audioFileReader?.Dispose();
-            _audioFileReader = new AudioFileReader(CurrentSong.FilePath)
+            _audioFileReader = new AudioFileReader(currentSong.FilePath)
             {
                 Volume = _volume
             };
@@ -189,7 +204,7 @@ public class MediaPlayer : IMediaPlayer, IDisposable
             _wavePlayer?.Play();
             
             PlaybackState = PlaybackState.Playing;
-            SongChanged?.Invoke(this, new SongChangedEventArgs { NewSong = CurrentSong });
+            SongChanged?.Invoke(this, new SongChangedEventArgs { NewSong = currentSong });
             
             StartPositionTimer();
             
@@ -197,7 +212,7 @@ public class MediaPlayer : IMediaPlayer, IDisposable
         }
         catch (FileNotFoundException)
         {
-            System.Diagnostics.Debug.WriteLine($"File not found: {CurrentSong?.FilePath}");
+            System.Diagnostics.Debug.WriteLine($"File not found: {currentSong?.FilePath}");
             PlaybackState = PlaybackState.Stopped;
             Next();
         }
@@ -240,8 +255,16 @@ public class MediaPlayer : IMediaPlayer, IDisposable
                 case RepeatMode.RepeatAll:
                 case RepeatMode.None:
                     Next();
-                    if (_currentIndex < _playlist.Count)
-                        await PlayCurrentAsync();
+                    _lock.EnterReadLock();
+                    try
+                    {
+                        if (_currentIndex < _playlist.Count)
+                            await PlayCurrentAsync();
+                    }
+                    finally
+                    {
+                        _lock.ExitReadLock();
+                    }
                     break;
             }
         }
@@ -293,6 +316,7 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     
     public void Next()
     {
+        _lock.EnterWriteLock();
         try
         {
             if (_playlist.Count == 0) return;
@@ -302,11 +326,15 @@ public class MediaPlayer : IMediaPlayer, IDisposable
             else
                 _currentIndex = (_currentIndex + 1) % _playlist.Count;
         }
-        catch { /* Ignore next errors */ }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
     
     public void Previous()
     {
+        _lock.EnterWriteLock();
         try
         {
             if (_playlist.Count == 0) return;
@@ -316,46 +344,32 @@ public class MediaPlayer : IMediaPlayer, IDisposable
             else
                 _currentIndex = (_currentIndex - 1 + _playlist.Count) % _playlist.Count;
         }
-        catch { /* Ignore previous errors */ }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
     
-    public void SetRepeatMode(RepeatMode mode)
-    {
-        try
-        {
-            _repeatMode = mode;
-        }
-        catch { /* Ignore */ }
-    }
+    public void SetRepeatMode(RepeatMode mode) => _repeatMode = mode;
     
-    public void SetShuffleMode(bool enabled)
-    {
-        try
-        {
-            _shuffleMode = enabled;
-        }
-        catch { /* Ignore */ }
-    }
+    public void SetShuffleMode(bool enabled) => _shuffleMode = enabled;
     
     private void StartPositionTimer()
     {
         try
         {
-            if (_positionTimer == null)
-            {
-                _positionTimer = new System.Timers.Timer(100);
-                _positionTimer.Elapsed += (s, e) =>
-                {
-                    try
-                    {
-                        PositionChanged?.Invoke(this, new PositionChangedEventArgs { Position = CurrentPosition });
-                    }
-                    catch { /* Ignore position update errors */ }
-                };
-            }
+            _positionTimer ??= new System.Timers.Timer(100) { AutoReset = true };
             
-            if (!_positionTimer.Enabled)
-                _positionTimer.Start();
+            _positionTimer.Elapsed += (s, e) =>
+            {
+                try
+                {
+                    PositionChanged?.Invoke(this, new PositionChangedEventArgs { Position = CurrentPosition });
+                }
+                catch { /* Ignore position update errors */ }
+            };
+            
+            _positionTimer.Start();
         }
         catch { /* Ignore timer errors */ }
     }
@@ -364,13 +378,13 @@ public class MediaPlayer : IMediaPlayer, IDisposable
     {
         try
         {
-            if (_positionTimer != null && _positionTimer.Enabled)
+            if (_positionTimer is not null)
                 _positionTimer.Stop();
         }
         catch { /* Ignore */ }
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (_isDisposed) return;
         
@@ -380,11 +394,18 @@ public class MediaPlayer : IMediaPlayer, IDisposable
             _positionTimer?.Dispose();
             _audioFileReader?.Dispose();
             _wavePlayer?.Dispose();
+            _lock.Dispose();
         }
         catch { /* Ignore disposal errors */ }
         
         _isDisposed = true;
         GC.SuppressFinalize(this);
+        await Task.CompletedTask;
+    }
+    
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().Wait();
     }
     
     ~MediaPlayer()

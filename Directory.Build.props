@@ -1,13 +1,15 @@
-<Project>
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Authors>MrR013X404</Authors>
     <Description>A lightweight, fast, and open-source music player for Windows</Description>
     <PackageProjectUrl>https://github.com/MrR013X404/Qorith</PackageProjectUrl>
     <RepositoryUrl>https://github.com/MrR013X404/Qorith</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
 </Project>
