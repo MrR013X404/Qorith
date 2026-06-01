@@ -171,4 +171,19 @@ public partial class MainWindow : Window
             System.Diagnostics.Debug.WriteLine($"Context menu error: {ex.Message}");
         }
     }
+    
+    private void BrowseFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_viewModel?.BrowseFolderCommand.CanExecute(null) ?? false)
+            {
+                _viewModel.BrowseFolderCommand.Execute(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error opening folder dialog: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }

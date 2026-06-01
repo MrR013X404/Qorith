@@ -1,8 +1,7 @@
 namespace Qorith.UI.ViewModels;
 
-using System.Windows.Input;
 using System.Collections.ObjectModel;
-using System.Windows;
+using System.Windows.Input;
 using Qorith.Models;
 using Qorith.Core.Services;
 using Qorith.Core.Interfaces;
@@ -20,12 +19,10 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private TimeSpan _duration;
     private float _volume = 0.8f;
     private string _searchQuery = string.Empty;
-    private bool _isPlaying = false;
-    private ObservableCollection<Song> _songs = new();
+    private bool _isPlaying;
     private ObservableCollection<Song> _displayedSongs = new();
-    private Playlist? _currentPlaylist;
     private RepeatMode _repeatMode = RepeatMode.None;
-    private bool _shuffleEnabled = false;
+    private bool _shuffleEnabled;
     private int _currentSongIndex = -1;
     private string _statusMessage = "Ready";
     
@@ -43,8 +40,6 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public ICommand ToggleRepeatCommand { get; private set; }
     public ICommand ToggleShuffleCommand { get; private set; }
     public ICommand CreatePlaylistCommand { get; private set; }
-    public ICommand DeletePlaylistCommand { get; private set; }
-    public ICommand AddToPlaylistCommand { get; private set; }
     
     // Properties
     public Song? CurrentSong
@@ -153,8 +148,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
         {
             if (param is Song song)
             {
-                _currentSongIndex = _songs.IndexOf(song);
-                await _mediaPlayer.PlayAsync(_songs.ToList(), _currentSongIndex);
+                var songs = _musicLibrary.GetAllSongs();
+                _currentSongIndex = songs.FindIndex(s => s.Id == song.Id);
+                await _mediaPlayer.PlayAsync(songs, Math.Max(0, _currentSongIndex));
                 _musicLibrary.IncrementPlayCount(song.Id);
                 StatusMessage = $"Playing: {song.Title}";
             }
@@ -181,10 +177,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
         NextCommand = new RelayCommand(async _ =>
         {
             _mediaPlayer.Next();
-            if (_currentSongIndex < _songs.Count - 1)
+            var songs = _musicLibrary.GetAllSongs();
+            if (_currentSongIndex < songs.Count - 1)
             {
                 _currentSongIndex++;
-                await _mediaPlayer.PlayAsync(_songs.ToList(), _currentSongIndex);
+                await _mediaPlayer.PlayAsync(songs, _currentSongIndex);
                 StatusMessage = $"Playing: {CurrentSong?.Title}";
             }
         });
@@ -194,7 +191,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
             if (_currentSongIndex > 0)
             {
                 _currentSongIndex--;
-                await _mediaPlayer.PlayAsync(_songs.ToList(), _currentSongIndex);
+                var songs = _musicLibrary.GetAllSongs();
+                await _mediaPlayer.PlayAsync(songs, _currentSongIndex);
                 StatusMessage = $"Playing: {CurrentSong?.Title}";
             }
         });
@@ -230,16 +228,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
             var playlistName = PromptForInput("Create New Playlist", "Enter playlist name:");
             if (!string.IsNullOrWhiteSpace(playlistName))
             {
-                var playlist = _musicLibrary.CreatePlaylist(playlistName);
+                _musicLibrary.CreatePlaylist(playlistName);
                 StatusMessage = $"Created playlist: {playlistName}";
-            }
-        });
-        
-        AddToPlaylistCommand = new RelayCommand((param) =>
-        {
-            if (param is Song song)
-            {
-                StatusMessage = $"Added '{song.Title}' to playlist";
             }
         });
     }
@@ -265,39 +255,50 @@ public class MainWindowViewModel : INotifyPropertyChanged
     
     public async Task BrowseAndLoadFolder()
     {
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        try
         {
-            Description = "Select a folder containing music files"
-        };
-        
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            // Use FolderBrowserDialog from WPF (no external dependency needed)
+            var folderDialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Select a folder containing music files",
+                UseNewFolderButton = false
+            };
+            
+            if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                try
+                {
+                    StatusMessage = $"Loading music from {folderDialog.SelectedPath}...";
+                    await _musicLibrary.LoadSongsFromFolderAsync(folderDialog.SelectedPath);
+                    RefreshDisplayedSongs();
+                    StatusMessage = $"Loaded {_musicLibrary.GetSongCount()} songs from {folderDialog.SelectedPath}";
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Error loading folder: {ex.Message}";
+                }
+            }
+        }
+        catch (Exception ex)
         {
-            try
-            {
-                StatusMessage = $"Loading music from {dialog.SelectedPath}...";
-                await _musicLibrary.LoadSongsFromFolderAsync(dialog.SelectedPath);
-                RefreshDisplayedSongs();
-                StatusMessage = $"Loaded {_songs.Count} songs from {dialog.SelectedPath}";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Error loading folder: {ex.Message}";
-            }
+            StatusMessage = $"Error opening folder dialog: {ex.Message}";
         }
     }
     
     private void RefreshDisplayedSongs()
     {
         var songs = _musicLibrary.GetAllSongs();
-        _songs = new ObservableCollection<Song>(songs);
+        DisplayedSongs = new ObservableCollection<Song>(songs);
         FilterAndDisplaySongs();
     }
     
     private void FilterAndDisplaySongs()
     {
+        var allSongs = _musicLibrary.GetAllSongs();
+        
         if (string.IsNullOrWhiteSpace(SearchQuery))
         {
-            DisplayedSongs = new ObservableCollection<Song>(_songs);
+            DisplayedSongs = new ObservableCollection<Song>(allSongs);
         }
         else
         {
@@ -306,43 +307,69 @@ public class MainWindowViewModel : INotifyPropertyChanged
         }
     }
     
-    public string GetFormattedTime(TimeSpan time)
-    {
-        if (time.TotalHours >= 1)
-            return $"{time.Hours}:{time.Minutes:D2}:{time.Seconds:D2}";
-        return $"{time.Minutes:D2}:{time.Seconds:D2}";
-    }
-    
     private string PromptForInput(string title, string prompt)
     {
-        var window = new Window
+        var window = new System.Windows.Window
         {
             Title = title,
-            Width = 300,
-            Height = 150,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = 350,
+            Height = 160,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner,
             Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30)),
-            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White)
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
+            ResizeMode = System.Windows.ResizeMode.NoResize
         };
         
-        var stackPanel = new System.Windows.Controls.StackPanel { Margin = new Thickness(10) };
-        stackPanel.Children.Add(new System.Windows.Controls.TextBlock { Text = prompt, Margin = new Thickness(0, 0, 0, 10) });
+        var stackPanel = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(15) };
+        
+        var label = new System.Windows.Controls.TextBlock 
+        { 
+            Text = prompt, 
+            Margin = new System.Windows.Thickness(0, 0, 0, 10),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White)
+        };
+        stackPanel.Children.Add(label);
         
         var textBox = new System.Windows.Controls.TextBox
         {
             Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51)),
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
-            Padding = new Thickness(8),
-            Margin = new Thickness(0, 0, 0, 10)
+            Padding = new System.Windows.Thickness(8),
+            Margin = new System.Windows.Thickness(0, 0, 0, 15),
+            Height = 35,
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 102, 204)),
+            BorderThickness = new System.Windows.Thickness(1)
         };
         stackPanel.Children.Add(textBox);
         
-        var buttonPanel = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var buttonPanel = new System.Windows.Controls.StackPanel 
+        { 
+            Orientation = System.Windows.Controls.Orientation.Horizontal, 
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
         
-        var okButton = new System.Windows.Controls.Button { Content = "OK", Width = 75, Margin = new Thickness(5), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 102, 204)) };
+        var okButton = new System.Windows.Controls.Button 
+        { 
+            Content = "OK", 
+            Width = 80, 
+            Height = 35,
+            Margin = new System.Windows.Thickness(5), 
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 102, 204)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
         okButton.Click += (s, e) => { window.DialogResult = true; window.Close(); };
         
-        var cancelButton = new System.Windows.Controls.Button { Content = "Cancel", Width = 75, Margin = new Thickness(5), Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200)) };
+        var cancelButton = new System.Windows.Controls.Button 
+        { 
+            Content = "Cancel", 
+            Width = 80, 
+            Height = 35,
+            Margin = new System.Windows.Thickness(5), 
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
         cancelButton.Click += (s, e) => { window.DialogResult = false; window.Close(); };
         
         buttonPanel.Children.Add(okButton);
@@ -354,7 +381,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         if (window.ShowDialog() == true)
             return textBox.Text;
         
-        return "";
+        return string.Empty;
     }
     
     protected void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null)
