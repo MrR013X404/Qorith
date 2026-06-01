@@ -3,6 +3,29 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="Views/MainWindow.xaml">
     <Application.Resources>
-         
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Background" Value="#0066cc" />
+            <Setter Property="Foreground" Value="white" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#0052a3" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#003d7a" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <Style x:Key="SidebarButton" TargetType="Button" BasedOn="{StaticResource DarkButton}">
+            <Setter Property="Width" Value="Auto" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="10,10" />
+        </Style>
     </Application.Resources>
 </Application>

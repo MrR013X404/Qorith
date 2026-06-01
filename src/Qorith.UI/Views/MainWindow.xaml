@@ -2,14 +2,15 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Qorith - Music Player"
-        Width="900"
-        Height="650"
+        Width="1000"
+        Height="700"
         WindowStartupLocation="CenterScreen"
         Background="#1e1e1e"
         Foreground="#ffffff"
         ResizeMode="CanResize"
-        MinWidth="600"
-        MinHeight="400">
+        MinWidth="700"
+        MinHeight="500"
+        KeyDown="Window_KeyDown">
     
     <Grid>
         <Grid.RowDefinitions>
@@ -17,14 +18,17 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         
         <!-- Menu/Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2d2d2d" Padding="10" Height="50">
-            <Button Content="📁 Open Folder" Padding="15,10" Margin="5,0" Background="#0066cc" Foreground="white" Command="{Binding BrowseFolderCommand}" />
-            <TextBlock Text="|" Foreground="#666666" Margin="10,0" VerticalAlignment="Center" />
-            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="10,0,5,0" />
-            <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" Width="150" Padding="8" Background="#333333" Foreground="#ffffff" />
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2d2d2d" Padding="12" Height="55">
+            <Button Content="📁 Open Folder" Padding="15,10" Margin="5,0" Background="#0066cc" Foreground="white" Command="{Binding BrowseFolderCommand}" Cursor="Hand" />
+            <TextBlock Text="|" Foreground="#666666" Margin="15,0" VerticalAlignment="Center" FontSize="16" />
+            <Button Content="➕ New Playlist" Padding="15,10" Margin="5,0" Background="#0066cc" Foreground="white" Command="{Binding CreatePlaylistCommand}" Cursor="Hand" />
+            <TextBlock Text="|" Foreground="#666666" Margin="15,0" VerticalAlignment="Center" FontSize="16" />
+            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="10,0,5,0" FontWeight="Bold" />
+            <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" Width="200" Padding="8" Background="#333333" Foreground="#ffffff" BorderThickness="1" BorderBrush="#0066cc" />
         </StackPanel>
         
         <!-- Main Content Area -->
@@ -35,27 +39,44 @@
             </Grid.ColumnDefinitions>
             
             <!-- Sidebar Navigation -->
-            <StackPanel Grid.Column="0" Background="#2d2d2d" Margin="0,0,10,0" Padding="10">
-                <TextBlock Text="Library" FontSize="16" FontWeight="Bold" Margin="0,0,0,15" />
-                <Button Content="🎵 All Songs" Padding="10,8" Margin="0,0,0,8" Background="#0066cc" Foreground="white" Style="{StaticResource ButtonStyle}" />
-                <Button Content="❤️ Favorites" Padding="10,8" Margin="0,0,0,8" Background="#0066cc" Foreground="white" Style="{StaticResource ButtonStyle}" />
-                <Button Content="📋 Playlists" Padding="10,8" Margin="0,0,0,8" Background="#0066cc" Foreground="white" Style="{StaticResource ButtonStyle}" />
-                <Button Content="🎤 Artists" Padding="10,8" Margin="0,0,0,8" Background="#0066cc" Foreground="white" Style="{StaticResource ButtonStyle}" />
-                <Button Content="💿 Albums" Padding="10,8" Margin="0,0,0,8" Background="#0066cc" Foreground="white" Style="{StaticResource ButtonStyle}" />
+            <StackPanel Grid.Column="0" Background="#2d2d2d" Margin="0,0,10,0" Padding="12">
+                <TextBlock Text="🎵 Library" FontSize="16" FontWeight="Bold" Margin="0,0,0,15" />
+                <Button Content="🎶 All Songs" Padding="10,10" Margin="0,0,0,8" Style="{StaticResource SidebarButton}" />
+                <Button Content="❤️ Favorites" Padding="10,10" Margin="0,0,0,8" Style="{StaticResource SidebarButton}" />
+                <Button Content="📋 Playlists" Padding="10,10" Margin="0,0,0,8" Style="{StaticResource SidebarButton}" />
+                <Button Content="🎤 Artists" Padding="10,10" Margin="0,0,0,8" Style="{StaticResource SidebarButton}" />
+                <Button Content="💿 Albums" Padding="10,10" Margin="0,0,0,8" Style="{StaticResource SidebarButton}" />
             </StackPanel>
             
-            <!-- Songs List -->
+            <!-- Songs List with DataGrid -->
             <StackPanel Grid.Column="1">
-                <TextBlock Text="Songs" FontSize="18" FontWeight="Bold" Margin="0,0,0,10" />
-                <DataGrid ItemsSource="{Binding Songs}" Background="#2d2d2d" Foreground="#ffffff" BorderThickness="0" RowBackground="#1e1e1e" AlternatingRowBackground="#2a2a2a">
+                <TextBlock Text="📻 Now Playing Queue" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+                <DataGrid 
+                    ItemsSource="{Binding DisplayedSongs}" 
+                    Background="#2d2d2d" 
+                    Foreground="#ffffff" 
+                    BorderThickness="0" 
+                    RowBackground="#1e1e1e" 
+                    AlternatingRowBackground="#2a2a2a"
+                    ContextMenuOpening="DataGrid_ContextMenuOpening"
+                    MouseDoubleClick="DataGrid_MouseDoubleClick">
+                    <DataGrid.ContextMenu>
+                        <ContextMenu Background="#2d2d2d" Foreground="#ffffff">
+                            <MenuItem Header="▶️ Play" Command="{Binding PlaySongCommand}" />
+                            <MenuItem Header="❤️ Add to Favorites" Command="{Binding ToggleFavoriteCommand}" />
+                            <MenuItem Header="📋 Add to Playlist" />
+                            <Separator />
+                            <MenuItem Header="ℹ️ Properties" />
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
-                        <DataGridTextColumn Header="Artist" Binding="{Binding Artist}" Width="150" />
-                        <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="80" />
-                        <DataGridTemplateColumn Header="Action" Width="60">
+                        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Artist" Binding="{Binding Artist}" Width="150" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="80" IsReadOnly="True" />
+                        <DataGridTemplateColumn Header="❤️" Width="50" IsReadOnly="True">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="▶" Command="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=DataContext.PlayCommand}" CommandParameter="{Binding}" Width="40" />
+                                    <TextBlock Text="❤️" Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVisConverter}}" Foreground="#ff3333" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -65,51 +86,69 @@
         </Grid>
         
         <!-- Now Playing Info -->
-        <StackPanel Grid.Row="2" Background="#2d2d2d" Padding="15" Margin="10,0,10,10">
-            <TextBlock Text="Now Playing" FontSize="12" Foreground="#999999" Margin="0,0,0,5" />
-            <TextBlock Text="{Binding CurrentSong.Title, StringFormat='Title: {0}'}" FontSize="14" FontWeight="Bold" />
-            <TextBlock Text="{Binding CurrentSong.Artist, StringFormat='Artist: {0}'}" FontSize="12" Foreground="#cccccc" />
+        <StackPanel Grid.Row="2" Background="#2d2d2d" Padding="15" Margin="10,0,10,10" Height="Auto" MinHeight="70">
+            <TextBlock Text="🎵 Now Playing" FontSize="12" Foreground="#999999" Margin="0,0,0,5" />
+            <TextBlock Text="{Binding CurrentSong.Title, StringFormat='Title: {0}', FallbackValue='No song selected'}" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding CurrentSong.Artist, StringFormat='Artist: {0}', FallbackValue='Unknown'}" FontSize="13" Foreground="#cccccc" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#999999" Margin="0,5,0,0" />
         </StackPanel>
         
         <!-- Progress Bar -->
-        <StackPanel Grid.Row="2" Margin="10,0,10,0" VerticalAlignment="Bottom" Padding="0,5">
-            <Slider Value="{Binding CurrentPosition.TotalSeconds}" Maximum="{Binding Duration.TotalSeconds}" Background="#2d2d2d" Foreground="#0066cc" Height="4" />
+        <StackPanel Grid.Row="3" Margin="15,0,15,5">
+            <Slider 
+                Value="{Binding CurrentPosition.TotalSeconds}" 
+                Maximum="{Binding Duration.TotalSeconds}" 
+                Background="#2d2d2d" 
+                Foreground="#0066cc" 
+                Height="6"
+                Cursor="Hand" />
             <Grid Margin="0,5,0,0">
-                <TextBlock Text="{Binding CurrentPosition, StringFormat='hh\\:mm\\:ss'}" HorizontalAlignment="Left" FontSize="11" />
-                <TextBlock Text="{Binding Duration, StringFormat='hh\\:mm\\:ss'}" HorizontalAlignment="Right" FontSize="11" />
+                <TextBlock Text="{Binding CurrentPosition, StringFormat='{0:hh\\:mm\\:ss}'}" HorizontalAlignment="Left" FontSize="11" />
+                <TextBlock Text="{Binding Duration, StringFormat='{0:hh\\:mm\\:ss}'}" HorizontalAlignment="Right" FontSize="11" />
             </Grid>
         </StackPanel>
         
         <!-- Playback Controls -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Background="#2d2d2d" Padding="10" Height="60">
-            <Button Content="⏮" Width="45" Height="45" Margin="5" FontSize="20" Command="{Binding PreviousCommand}" />
-            <Button Content="{Binding IsPlaying, StringFormat='▶|⏸'}" Width="55" Height="45" Margin="5" FontSize="20" Background="#0066cc" Foreground="white" />
-            <Button Content="⏭" Width="45" Height="45" Margin="5" FontSize="20" Command="{Binding NextCommand}" />
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Center" Background="#2d2d2d" Padding="15" Height="70">
+            <!-- Navigation Controls -->
+            <Button Content="⏮️" Width="50" Height="50" Margin="5" FontSize="20" Style="{StaticResource DarkButton}" Command="{Binding PreviousCommand}" Cursor="Hand" ToolTip="Previous (Ctrl+Left)" />
             
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0" />
+            <Button x:Name="PlayPauseBtn" Content="▶️" Width="60" Height="50" Margin="5" FontSize="20" Background="#00cc00" Foreground="white" Cursor="Hand" ToolTip="Play/Pause (Space)" Click="PlayPauseButton_Click" />
             
-            <Button Content="🔁" Width="45" Height="45" Margin="5" FontSize="18" Command="{Binding ToggleRepeatCommand}" />
-            <Button Content="🔀" Width="45" Height="45" Margin="5" FontSize="18" Command="{Binding ToggleShuffleCommand}" />
+            <Button Content="⏭️" Width="50" Height="50" Margin="5" FontSize="20" Style="{StaticResource DarkButton}" Command="{Binding NextCommand}" Cursor="Hand" ToolTip="Next (Ctrl+Right)" />
             
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0" />
+            <Rectangle Width="1" Margin="15,0" Fill="#444444" />
             
-            <TextBlock Text="🔊" VerticalAlignment="Center" Margin="10,0,5,0" />
-            <Slider Width="100" Value="{Binding Volume}" Minimum="0" Maximum="1" VerticalAlignment="Center" Margin="5,0" />
+            <!-- Repeat Button -->
+            <Button Width="50" Height="50" Margin="5" FontSize="16" Style="{StaticResource DarkButton}" Command="{Binding ToggleRepeatCommand}" Cursor="Hand" ToolTip="{Binding RepeatModeDisplay}">
+                <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="🔁" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding RepeatMode}" FontSize="9" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            
+            <!-- Shuffle Button -->
+            <Button Width="50" Height="50" Margin="5" FontSize="18" Style="{StaticResource DarkButton}" Command="{Binding ToggleShuffleCommand}" Cursor="Hand" ToolTip="{Binding ShuffleDisplay}" Content="🔀" />
+            
+            <Rectangle Width="1" Margin="15,0" Fill="#444444" />
+            
+            <!-- Volume Control -->
+            <TextBlock Text="🔊" VerticalAlignment="Center" Margin="10,0,5,0" FontSize="16" />
+            <Slider 
+                Width="100" 
+                Value="{Binding Volume}" 
+                Minimum="0" 
+                Maximum="1" 
+                VerticalAlignment="Center" 
+                Margin="5,0"
+                Background="#2d2d2d"
+                Foreground="#0066cc"
+                Cursor="Hand" />
+            <TextBlock Text="{Binding Volume, StringFormat='{0:P0}'}" VerticalAlignment="Center" Margin="10,0,0,0" Width="40" />
         </StackPanel>
     </Grid>
     
     <Window.Resources>
-        <Style x:Key="ButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#0066cc" />
-            <Setter Property="Foreground" Value="white" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,8" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#0052a3" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </Window.Resources>
 </Window>
