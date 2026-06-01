@@ -1,15 +1,35 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!-- Shared Properties for all projects in the solution -->
+  
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <!-- Package Metadata -->
     <Version>1.0.0</Version>
     <Authors>MrR013X404</Authors>
     <Description>A lightweight, fast, and open-source music player for Windows</Description>
     <PackageProjectUrl>https://github.com/MrR013X404/Qorith</PackageProjectUrl>
     <RepositoryUrl>https://github.com/MrR013X404/Qorith</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <License>MIT</License>
+    <Company>Qorith</Company>
+    <Product>Qorith Music Player</Product>
+    <Copyright>Copyright (c) 2026 Md. Sabbir Hossan</Copyright>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- Code Generation Settings -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- Performance and Optimization -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
 </Project>

@@ -2,8 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <StartupObject>Qorith.UI.App</StartupObject>
   </PropertyGroup>
