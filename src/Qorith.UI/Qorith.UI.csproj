@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="System.Windows.Forms" Version="4.7.0" />
   </ItemGroup>
 
   <ItemGroup>
