@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../Qorith.Models/Qorith.Models.csproj" />
+  </ItemGroup>
+
+</Project>
